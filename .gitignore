@@ -2,6 +2,11 @@
 __pycache__/
 *.py[codz]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
 
 # C extensions
 *.so
@@ -25,6 +30,62 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Pytest cache
+.cache/
+pytest_cache/
+
+# --- FASTAPI / UVICORN ---
+*.log
+
+# --- DOCKER ---
+*.tar
+docker-compose.override.yml
+
+# --- KUBERNETES / HELM ---
+charts/**/charts/
+charts/**/tmp/
+*.release
+*.lock
+
+# Kube configs
+kubeconfig
+*.kubeconfig
+
+# --- SALESFORCE SFDX ---
+.sfdx/
+.sf/
+*.json.backup
+.salesforce/
+
+# Scratch org files
+config/project-scratch-def.json
+**/orgs/
+
+# .env
+.env
+.env.local
+.env.dev
+.env.prod
+
+# --- NODE MODULES ---
+node_modules/
+
+# --- VS CODE / PYCHARM ---
+.vscode/
+.idea/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
