@@ -39,7 +39,7 @@ At this stage, all tests are successfully passed (4 passed), which confirms the 
 The service is started via Uvicorn in dev mode with --reload:
 
 ```cmd
-uvicorn app.main:app –reload
+uvicorn app.main:app -reload
 ```
 <details> <summary>Uvicorn server running</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2004.jpg?raw=true" width="900" > </details>
 
@@ -206,4 +206,114 @@ This sets the stage for the following phases:
 - deployments in Docker and Kubernetes,
 - monitoring the status of Salesforce integrations through Prometheus and Grafana.
 
+## Stage 3 - Continuous Integration (FastAPI CI Workflow)
+In the third stage, it is configured **CI-process for FastAPI-service** by means of **GitHub Actions**.  
+Pipeline automatically runs linters, static analysis, tests, and security scans when working with `feature/*`, `dev`, and `main` branches, as well as when creating a Pull Request.
+---
 
+### FastAPI CI Workflow (`.github/workflows/fastapi-ci.yml`)
+Separate service created for workflow **FastAPI CI**:
+- launched with:
+  - `push` in brunch `feature/*`, `dev`, `main`;
+  - `pull_request` in brunch `dev` and `main`;
+- provide two main things jobs:
+  - `lint-and-test` - formatting, linting, type checking and unit tests;
+  - `security-scan` - checking dependencies for vulnerabilities through `pip-audit`.
+
+### Job `lint-and-test`: formatting, analysis and tests
+Job `lint-and-test` works on base image `ubuntu-latest` and performs following steps:
+
+1. **Code Checkout**  
+```yaml
+uses: actions/checkout@v4
+```
+Provides access to the current version of the repository.
+
+2. Setup Python 3.12
+```yaml
+uses: actions/setup-python@v5
+with:
+  python-version: "3.12"
+```
+Aligns CI environment with local development.
+
+3. Installing dependencies
+```yaml
+working-directory: fastapi-app
+run: |
+  python -m pip install --upgrade pip
+  pip install -r requirements.txt -r requirements-dev.txt
+```
+Both runtime libraries (FastAPI, Uvicorn, simple-salesforce) and dev tools (pytest, black, isort, flake8, mypy) are installed.
+
+4. Check formatting via black
+```yaml
+black --check app tests
+```
+Guarantees a uniform code style; job fails with unformatted code.
+
+5. Checking order of imports via isort
+```yaml
+isort --check-only app tests
+```
+Controls the structure of imports, simplifies readability.
+
+6. Linting via flake8
+```yaml
+flake8 app tests
+```
+Detects potential bugs, “code smells” and PEP 8 violations.
+
+7. Static type analysis via mypy
+```yaml
+mypy app
+```
+Checks correct typing, which is important for code stability.
+
+8. Unit tests via pytest
+```yaml
+pytest
+```
+Запускає всі тести, включно з:
+- test_health.py - check /health;
+- test_tasks.py - check /api/tasks;
+- test_sf_status.py - check/sf-status with use mocking’у Salesforce.
+
+Successfully completing all steps ensures that changes do not break functionality and adhere to formatting, style, and typing standards.
+
+### Job security-scan: dependency vulnerability checking
+The second job - security-scan - is responsible for the DevSecOps part of pipeline:
+- runs after successful completion of lint-and-test (due to needs: lint-and-test);
+- uses the pip-audit tool to scan dependencies:
+```yaml
+pip-audit -r requirements.txt -r requirements-dev.txt
+```
+If critical vulnerabilities are found in libraries, the job will terminate with an error, blocking deployment of potentially dangerous code. This brings the project closer to secure-by-default CI/CD practices.
+
+### Trigger conditions for Pull Requests
+Important part of the configuration is the logic that controls when jobs are executed for Pull Requests:
+```yaml
+if: >
+  github.event_name == 'push' ||
+  (github.event_name == 'pull_request' &&
+   ((github.base_ref == 'dev' && startsWith(github.head_ref, 'feature/')) ||
+    (github.base_ref == 'main' && github.head_ref == 'dev')))
+```
+Сondition ensures:
+- CI launch during normal pushes to feature/*, dev, main;
+- CI launch during PR:
+- from feature/* to dev (review and quality control before integration into the dev stage),
+- from dev to main (final check before the “production” branch).
+
+## Stage 3 Summary:
+- fully automated CI process for Python / FastAPI service;
+- code quality control through formatting, linting and static analysis;
+- automatic test execution for each change;
+- basic security gate at the dependency level;
+- CI integration into the GitFlow process: feature/* -> dev -> main.
+
+**Create solid foundation for the following phases:**
+- containerization in Docker and Docker image scanning,
+- deployment in Kubernetes,
+- advanced monitoring and logging,
+- further integration of Salesforce DevOps processes into common pipeline.
