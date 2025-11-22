@@ -1,0 +1,98 @@
+name: FastAPI CI
+
+on:
+  push:
+    branches:
+      - "feature/*"
+      - dev
+      - main
+  pull_request:
+    branches:
+      - dev
+      - main
+
+jobs:
+  lint-and-test:
+    name: Lint, type-check and test
+    runs-on: ubuntu-latest
+
+    # Set limits launch:
+    # - feature/* -> dev
+    # - dev -> main
+    if: >
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       ((github.base_ref == 'dev' && startsWith(github.head_ref, 'feature/')) ||
+        (github.base_ref == 'main' && github.head_ref == 'dev')))
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: fastapi-app
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Black format check
+        working-directory: fastapi-app
+        run: |
+          black --check app tests
+
+      - name: isort import order check
+        working-directory: fastapi-app
+        run: |
+          isort --check-only app tests
+
+      - name: flake8 linting
+        working-directory: fastapi-app
+        run: |
+          flake8 app tests
+
+      - name: mypy type checking
+        working-directory: fastapi-app
+        run: |
+          mypy app
+
+      - name: Run pytest
+        working-directory: fastapi-app
+        run: |
+          pytest
+
+  security-scan:
+    name: Python dependency security scan
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+
+    if: >
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       ((github.base_ref == 'dev' && startsWith(github.head_ref, 'feature/')) ||
+        (github.base_ref == 'main' && github.head_ref == 'dev')))
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+
+      - name: Run pip-audit on dependencies
+        working-directory: fastapi-app
+        run: |
+          pip-audit -r requirements.txt -r requirements-dev.txt
+
+          
