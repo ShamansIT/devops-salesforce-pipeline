@@ -2,7 +2,7 @@
 Project demonstrates a combined **DevOps + Salesforce DevOps** approach using a real-world CI/CD pipeline.
 
 ## Stage 1 - FastAPI application: local setup and verification
-At the first stage, the basic **FastAPI** service was created, the local development environment was configured, and the operation of all major endpoints and tests was checked. This step is the foundation for the next phases (CI/CD, Docker, Kubernetes, Monitoring, and Salesforce integrations).
+At the first stage, the basic **FastAPI** service was created, the local development environment was configured, and the operation of all major endpoints and tests was checked. This step is the foundation for the next stages (CI/CD, Docker, Kubernetes, Monitoring, and Salesforce integrations).
 ***
 ### Virtual environment and dependencies
 Separate **virtual environment** has been created at the root of the service ('fastapi-app/'):
@@ -63,7 +63,7 @@ Through the integration of prometheus-fastapi-instrumentator, the application ex
 - duration of requests,
 - number of requests for endpoints and methods,
 - status codes, etc.
-This data will be used in the Monitoring & Logging phase (Prometheus + Grafana):
+This data will be used in the Monitoring & Logging stage (Prometheus + Grafana):
 <details> <summary>Prometheus metrics output</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2006.jpg?raw=true" width="900" > </details>
 
 ### Business Logic Checker - /api/tasks
@@ -201,7 +201,7 @@ In this resolution, the API contract /sf-status is tested, and the external depe
 - secure endpoint /sf-status, which does not break the application in the absence of integration,
 - unit tests with mocking, which make the integration compatible with CI/CD.
 
-This sets the stage for the following phases:
+This sets the stage for the following stages:
 - adding GitHub Actions CI (tests, linters, security scans),
 - deployments in Docker and Kubernetes,
 - monitoring the status of Salesforce integrations through Prometheus and Grafana.
@@ -299,7 +299,7 @@ if: >
    ((github.base_ref == 'dev' && startsWith(github.head_ref, 'feature/')) ||
     (github.base_ref == 'main' && github.head_ref == 'dev')))
 ```
-Сondition ensures:
+**Сondition ensures:**
 - CI launch during normal pushes to feature/*, dev, main;
 - CI launch during PR:
 - from feature/* to dev (review and quality control before integration into the dev stage),
@@ -312,8 +312,10 @@ if: >
 - basic security gate at the dependency level;
 - CI integration into the GitFlow process: feature/* -> dev -> main.
 
-**Create solid foundation for the following phases:**
+**Create solid foundation for the following stages:**
 - containerization in Docker and Docker image scanning,
 - deployment in Kubernetes,
 - advanced monitoring and logging,
 - further integration of Salesforce DevOps processes into common pipeline.
+
+
