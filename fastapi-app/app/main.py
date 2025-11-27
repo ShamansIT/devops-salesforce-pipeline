@@ -14,7 +14,8 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="DevOps & Salesforce CI/CD Demo",
         version="1.0.0",
-        description="FastAPI service used to demonstrate CI/CD, Docker, Kubernetes and Salesforce integration.",
+        description="FastAPI service used to demonstrate CI/CD, Docker, "
+        "Kubernetes and Salesforce integration."
     )
 
     # Connect endpoints
