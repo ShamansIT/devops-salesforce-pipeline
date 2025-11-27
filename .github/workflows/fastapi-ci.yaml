@@ -58,8 +58,8 @@ jobs:
       - name: mypy type checking
         working-directory: fastapi-app
         run: |
-          mypy app
-
+          mypy --explicit-package-bases app
+          
       - name: Run pytest
         working-directory: fastapi-app
         run: |
