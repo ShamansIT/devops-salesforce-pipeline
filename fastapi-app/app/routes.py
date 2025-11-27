@@ -1,6 +1,8 @@
+from typing import List, Optional
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import List, Optional
+
 from app.sf_client import SalesforceClient
 
 router = APIRouter()

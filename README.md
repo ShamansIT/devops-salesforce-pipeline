@@ -299,7 +299,7 @@ if: >
    ((github.base_ref == 'dev' && startsWith(github.head_ref, 'feature/')) ||
     (github.base_ref == 'main' && github.head_ref == 'dev')))
 ```
-Сondition ensures:
+**Сondition ensures:**
 - CI launch during normal pushes to feature/*, dev, main;
 - CI launch during PR:
 - from feature/* to dev (review and quality control before integration into the dev stage),
