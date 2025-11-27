@@ -274,7 +274,7 @@ Checks correct typing, which is important for code stability.
 ```yaml
 pytest
 ```
-Запускає всі тести, включно з:
+Start all tests include:
 - test_health.py - check /health;
 - test_tasks.py - check /api/tasks;
 - test_sf_status.py - check/sf-status with use mocking’у Salesforce.

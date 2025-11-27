@@ -12,10 +12,12 @@ class Task(BaseModel):
     description: str
     status: str  # as `pending`, `in_progress` or `done`
 
+
 class SalesforceStatus(BaseModel):
     org: Optional[str]
     contacts_count: Optional[int]
     status: str
+
 
 # Static list DevOps-task for demo
 DEVOPS_TASKS = [
@@ -42,6 +44,7 @@ DEVOPS_TASKS = [
 # one inatance client Salesforce on module level
 sf_client = SalesforceClient()
 
+
 @router.get("/health")
 async def health_check() -> dict:
     """
@@ -59,6 +62,7 @@ async def list_tasks() -> List[Task]:
     Later this can be replaced with a real database or Salesforce integration.
     """
     return DEVOPS_TASKS
+
 
 @router.get("/sf-status", response_model=SalesforceStatus)
 async def sf_status() -> SalesforceStatus:
