@@ -29,7 +29,8 @@ app = FastAPI(
 )
 ```
 The content of the description is preserved, but no line is longer longer than 79 characters, and flake8 no longer signals E501.
-####2. isort - incorrect sorting of imports
+
+#### 2. isort - incorrect sorting of imports
 Symptom in CI:
 ```text
 ERROR: fastapi-app/app/routes.py Imports are incorrectly sorted and/or formatted.
@@ -46,6 +47,7 @@ After that:
 isort --check-only app tests
 ```
 started to **pass** without errors, and the CI stopped falling at this stage.
+
 #### 3. mypy - Routes module found twice (app.routes vs routes)
 Symptom in CI / locally:
 ```text
@@ -64,6 +66,7 @@ Similarly, the CI configuration has been updated:
     mypy --explicit-package-bases app
 ```
 This directly points mypy how to interpret the packet structure, and the duplicate module error disappeared.
+
 #### 4. flake8 - W293: blank line contains whitespace
 Symptom:
 ```cmd
@@ -100,4 +103,77 @@ working-directory: fastapi-app
 ```
 By these fixes, the FastAPI CI pipeline is stable and "clean": all linting, type checks, tests, and security scans pass successfully, and the repository meets the code quality requirements for a production-level DevOps project.
 
+#### 6. pip-audit - Starlette vulnerabilities and FastAPI upgrade
+**Symptom in CI (security scan):**
+```text
+Found 2 known vulnerabilities in 1 package
+Name      Version ID                  Fix Versions
+--------- ------- ------------------- ------------
+starlette 0.38.6  GHSA-f96h-pmfr-66vw 0.40.0
+starlette 0.38.6  GHSA-2c2j-9gv5-cj73 0.47.2
+Error: Process completed with exit code 1.
+```
+Later, after updating the dependencies, another version turned out to be vulnerable:
+```text
+Found 2 known vulnerabilities in 1 package
+Name      Version ID                  Fix Versions
+--------- ------- ------------------- ------------
+starlette 0.46.2  GHSA-2c2j-9gv5-cj73 0.47.2
+starlette 0.46.2  GHSA-7f5h-v6xp-fcq8 0.49.1
+Error: Process completed with exit code 1.
+```
+Reason:
+FastAPI implicitly pulls starlette as a dependency. Older versions of FastAPI (0.115.x) use the Starlette version range < 0.39.0, where there are known vulnerabilities. Attempting to manually commit a secure version of Starlette (e.g. starlette==0.47.2) resulted in a conflict:
+```text
+ERROR: Cannot install fastapi==0.115.0 and starlette==0.47.2 because these package versions have conflicting dependencies.
+```
+The conflict is caused by:
+    The user requested starlette==0.47.2
+    fastapi 0.115.0 depends on starlette<0.39.0 and >=0.37.2
+How fixed:
+The right path was chosen - to update the FastAPI to the current version, which already works with newer, "patched" versions of Starlette, and remove the Starlette manual pinning.
+Final version of requirements.txt:
+```text
+fastapi==0.121.3
+uvicorn[standard]==0.30.6
+prometheus-fastapi-instrumentator==7.0.0
+simple-salesforce
+```
+After that: reinstalled dependencies inside fastapi-app:
+``` cmd
+cd fastapi-app
+pip install -r requirements.txt -r requirements-dev.txt
+```
+Banished local checks:
+```cmd
+flake8 app tests
+mypy --explicit-package-bases app
+pytest
+```
+Security scan running again:
+```cmd
+pip-audit -r requirements.txt -r requirements-dev.txt
+```
+pip-audit has stopped reporting a vulnerable version of Starlette, and the CI job Python dependency security scan has gone green. This solution is in line with FastAPI recommendations: not to foam Starlette manually, but to update FastAPI to get secure versions of the framework and its dependencies.
 
+#### 7. pip / pip-audit - errors due to invalid directory
+Symptoms locally: attempting to install dependencies from the root of the repository:
+```cmd
+pip install -r requirements.txt -r requirements-dev.txt
+```
+led to an error:
+``` text
+ERROR: Could not open requirements file: [Errno 2] No such file or directory: 'requirements.txt'
+```
+The reason: the requirements.txt and requirements-dev.txt files are placed inside fastapi-app/ and the command was run from the root of the repository.
+
+How fixed: commands for working with Python dependencies and security scan have been standardized:
+``` cmd
+cd fastapi-app
+pip install -r requirements.txt -r requirements-dev.txt
+pip-audit -r requirements.txt -r requirements-dev.txt
+```
+Similar to linters and tests, all commands working with Python dependencies are run from the fastapi-app/ directory, which eliminates No such file or directory errors and makes the behavior of the local environment fully consistent with the CI settings (where working-directory: fastapi-app is used).
+```file
+::contentReference[oaicite:0]{index=0}
+```
