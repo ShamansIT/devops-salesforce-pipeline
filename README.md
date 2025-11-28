@@ -358,16 +358,24 @@ cd fastapi-app
 ```cmd
 docker build -t devops-app:local .
 ```
+<details> <summary>Container build</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2011.jpg?raw=true" width="900"> </details>
+
 #### Starting a container
 ```cmd
 docker run -p 8000:8000 devops-app:local
 ```
+<details> <summary>Container check</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2012.jpg?raw=true" width="900"> </details>
+
 After the container starts, the same endpoints are available as when running locally:
 http://127.0.0.1:8000/health
 http://127.0.0.1:8000/api/tasks
 http://127.0.0.1:8000/sf-status (if SF ENV variables are not specified -> status: "disabled")
 http://127.0.0.1:8000/docs
 This confirms that the containerized version of the application is fully equivalent to running locally through Uvicorn.
+
+<details> <summary>Container check</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2013.jpg?raw=true" width="900"> </details>
+
+<details> <summary>Container check</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2014.jpg?raw=true" width="900"> </details>
 
 4. Docker integration into CI: job docker-build-and-scan
 Separate job has been added to the workflow file .github/workflows/fastapi-ci.yml:
@@ -423,7 +431,7 @@ if there is a CRITICAL vulnerability - job falls, blocking the deployment.
     password: ${{ secrets.GITHUB_TOKEN }}
 ```
 Authorization takes place through the built-in GITHUB_TOKEN, additional secrets are not required.
-- Push образу в GHCR (SHA + latest)
+- Push image in GHCR (SHA + latest)
 ```yaml
 - name: Push image to GHCR (SHA tag)
   if: github.ref == 'refs/heads/main'
@@ -438,6 +446,8 @@ Authorization takes place through the built-in GITHUB_TOKEN, additional secrets 
 As a result, when pushing into the main in GHCR, the following are published:
 **Image with commit tag:** ghcr.io/<owner>/<repo>/fastapi-app:<SHA>
 **Image tagged Latest:** ghcr.io/<owner>/<repo>/fastapi-app:latest
+
+<details> <summary>Doscker Build </summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2015.jpg?raw=true" width="900"> </details>
 
 ## Stage 4 Summary:
 - fully containerized FastAPI service based on a lightweight Python image;
