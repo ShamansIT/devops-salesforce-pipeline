@@ -312,10 +312,139 @@ if: >
 - basic security gate at the dependency level;
 - CI integration into the GitFlow process: feature/* -> dev -> main.
 
-**Create solid foundation for the following stages:**
-- containerization in Docker and Docker image scanning,
-- deployment in Kubernetes,
-- advanced monitoring and logging,
-- further integration of Salesforce DevOps processes into common pipeline.
+## Stage4 - Docker & Containerisation
+In the fourth stage, the FastAPI service was containerized using Docker** and integrated into the CI process.  
+The purpose of this phase is:
+- run the application locally in the container;
+- build a Docker image automatically in CI;
+- scan the image for vulnerabilities via **Trivy**;
+- publish the image to **GitHub Container Registry (GHCR)** when updating the 'main' branch.
+---
+
+### Multi-stage Dockerfile (`fastapi-app/Dockerfile`)
+Multi-stage 'Dockerfile' has been created for the service, which consists of two stages:
+**builder**  
+   - based on 'python:3.12-slim';
+   - updates 'pip';
+   - establishes production dependencies with requirements.txt;
+   - does not generate '.pyc' files, logging works without a buffer.
+
+**runtime**  
+   - also uses the lightweight base image 'python:3.12-slim';
+   - copies the installed package builder images;
+   - copies the application ('app/');
+   - creates a separate user 'appuser' and runs the application **not from root**;
+   - exposes port '8000';
+   - runs FastAPI via Uvicorn:
+```cmd
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+Implementation reduces the size of the final image and complies with security best practices (not root-user).
+2. .dockerignore to optimize context
+In the fastapi-app/ directory, .dockerignore has been added so as not to drag into the Docker context:
+- Python caches (__pycache__, *.pyc);
+- local virtual environments (.venv/, venv/, env/);
+- tests (tests/) that are not needed in the runtime image;
+- Git metadata (.git, .github/);
+- IDE configs (.vscode/, .idea/);
+- local images and documentation (images/, *.md).
+This speeds up docker build and reduces the size of the context.
+3. Local Docker Image Validation
+To validate containerization, the following was performed:
+```cmd
+cd fastapi-app
+```
+#### Build local image
+```cmd
+docker build -t devops-app:local .
+```
+#### Starting a container
+```cmd
+docker run -p 8000:8000 devops-app:local
+```
+After the container starts, the same endpoints are available as when running locally:
+http://127.0.0.1:8000/health
+http://127.0.0.1:8000/api/tasks
+http://127.0.0.1:8000/sf-status (if SF ENV variables are not specified -> status: "disabled")
+http://127.0.0.1:8000/docs
+This confirms that the containerized version of the application is fully equivalent to running locally through Uvicorn.
+
+4. Docker integration into CI: job docker-build-and-scan
+Separate job has been added to the workflow file .github/workflows/fastapi-ci.yml:
+
+```yaml
+docker-build-and-scan:
+  name: Build and scan Docker image
+  runs-on: ubuntu-latest
+  needs:
+    - lint-and-test
+    - security-scan
+  permissions:
+    contents: read
+    packages: write
+  if: >
+    github.event_name == 'push' ||
+    (github.event_name == 'pull_request' &&
+     ((github.base_ref == 'dev' && startsWith(github.head_ref, 'feature/')) ||
+      (github.base_ref == 'main' && github.head_ref == 'dev')))
+  env:
+    IMAGE_NAME: ghcr.io/${{ github.repository }}/fastapi-app
+```
+**Main steps of the job:**
+- Build Docker image
+```yaml
+- name: Build Docker image
+  run: |
+    docker build -t $IMAGE_NAME:${{ github.sha }} fastapi-app
+```
+Context is the fastapi-app/ directory, the tag is the SHA of the commit ($GITHUB_SHA).
+- Image scanning Trivy
+```yaml
+- name: Run Trivy image scan
+  uses: aquasecurity/trivy-action@0.22.0
+  with:
+    image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+    format: 'table'
+    vuln-type: 'os,library'
+    severity: 'CRITICAL'
+    ignore-unfixed: true
+    exit-code: '1'
+```
+both OS packages and Python libraries are analyzed;
+if there is a CRITICAL vulnerability - job falls, blocking the deployment.
+- Login в GitHub Container Registry (лише для main)
+```yaml
+- name: Log in to GitHub Container Registry
+  if: github.ref == 'refs/heads/main'
+  uses: docker/login-action@v3
+  with:
+    registry: ghcr.io
+    username: ${{ github.actor }}
+    password: ${{ secrets.GITHUB_TOKEN }}
+```
+Authorization takes place through the built-in GITHUB_TOKEN, additional secrets are not required.
+- Push образу в GHCR (SHA + latest)
+```yaml
+- name: Push image to GHCR (SHA tag)
+  if: github.ref == 'refs/heads/main'
+  run: |
+    docker push $IMAGE_NAME:${{ github.sha }}
+- name: Tag and push image as latest
+  if: github.ref == 'refs/heads/main'
+  run: |
+    docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
+    docker push $IMAGE_NAME:latest
+```
+As a result, when pushing into the main in GHCR, the following are published:
+**Image with commit tag:** ghcr.io/<owner>/<repo>/fastapi-app:<SHA>
+**Image tagged Latest:** ghcr.io/<owner>/<repo>/fastapi-app:latest
+
+## Stage 4 Summary:
+- fully containerized FastAPI service based on a lightweight Python image;
+- compliance with security practices (non-rooted user inside the container);
+- local ability to launch and test the service in Docker;
+- automatic Docker build in CI;
+- scanning the image with the Trivy tool at the CI level;
+- automatic publication of Docker images to GitHub Container Registry from the main branch.
 
 
