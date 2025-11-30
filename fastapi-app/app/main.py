@@ -1,10 +1,9 @@
 from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.routes import router as api_router
 from app.sf_client import SalesforceClient
-
 
 # Custom Prometheus metric to track Salesforce integration errors
 SF_STATUS_ERRORS = Counter(
@@ -19,7 +18,7 @@ def create_app() -> FastAPI:
 
     Extended for Phase 7:
     - Prometheus /metrics
-    - Salesforce status endpoint instrumentation
+    - Salesforce status endpoint instrumentation.
     """
 
     app = FastAPI(
@@ -37,7 +36,6 @@ def create_app() -> FastAPI:
     # Setup Prometheus /metrics endpoint
     Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
-
     # Add sf-status endpoint directly inside create_app()
     @app.get("/sf-status")
     async def sf_status():
@@ -50,7 +48,8 @@ def create_app() -> FastAPI:
         try:
             status = client.get_status()
 
-            # Expected: {"org": "...", "contacts_count": int, "status": "ok"|"error"}
+            # Expected response structure:
+            # {"org": "...", "contacts_count": int, "status": "ok" or "error"}
             if status.get("status") != "ok":
                 SF_STATUS_ERRORS.inc()
 
