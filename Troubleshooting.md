@@ -184,9 +184,6 @@ pip install -r requirements.txt -r requirements-dev.txt
 pip-audit -r requirements.txt -r requirements-dev.txt
 ```
 Similar to linters and tests, all commands working with Python dependencies are run from the fastapi-app/ directory, which eliminates No such file or directory errors and makes the behavior of the local environment fully consistent with the CI settings (where working-directory: fastapi-app is used).
-```file
-::contentReference[oaicite:0]{index=0}
-```
 
 ## Stage 4 
 

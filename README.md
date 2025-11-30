@@ -485,7 +485,7 @@ To keep a low-level deployment option alongside Helm, basic Kubernetes manifests
 fastapi-app/k8s/
   deployment.yaml
   service.yaml
-  ingress.yaml   # optional
+  ingress.yaml
 ```
 **Deployment (deployment.yaml)**
 
@@ -611,3 +611,74 @@ Completes the DevOps pipeline from code to a running service in Kubernetes:
 Dedicated deploy workflow (fastapi-deploy.yml) is prepared to deploy into any Kubernetes cluster configured via kubeconfig.
 The configuration is environment-aware and ready to be extended for staging/production clusters in the future.
 
+## Stage 6 - Salesforce DevOps CI 
+
+Project adds a dedicated **Salesforce DevOps pipeline** alongside the existing FastAPI, Docker and Kubernetes layers.  
+This Stage demonstrates how metadata for a real Salesforce org (e.g. Property Management objects and Apex code) can be validated, tested and statically analysed automatically whenever a pull request touches the `salesforce/` folder.
+
+---
+
+### Salesforce project structure
+Standalone Salesforce DX project is created under `salesforce/`:
+- `salesforce/sfdx-project.json` – standard SFDX configuration (API version, default package directory, login URL).
+- `salesforce/force-app/main/default/` – source metadata for the org:
+  - example Apex class and test class (`DevopsDemo.cls`, `DevopsDemoTest.cls`) that can be replaced or extended with real Property Management logic.
+- `salesforce/scripts/` – helper scripts used by the CI workflow.
+
+This separation keeps the Salesforce metadata and tooling self-contained inside the main DevOps repository.
+
+### CI helper scripts (`salesforce/scripts/`)
+To keep the GitHub Actions workflow clean and readable, the heavy logic is extracted into reusable shell scripts:
+- `auth.sh`  
+  - Authenticates to the target Salesforce org using `SFDX_AUTH_URL` provided as a GitHub secret.  
+  - Stores the connection under an alias (e.g. `Sandbox`) so that other commands can use `-u Sandbox` without duplicating auth logic.
+- `validate_deploy.sh`  
+  - Runs a **check-only** deploy of `force-app` using  
+    `sfdx force:source:deploy -p force-app -c -l RunLocalTests`.  
+  - Ensures that all metadata changes are syntactically valid and that local tests can run before anything is actually deployed.
+- `run_apex_tests.sh`  
+  - Executes Apex tests with code coverage using  
+    `sfdx force:apex:test:run --codecoverage --resultformat json`.  
+  - Parses the JSON result (via `jq`) and enforces a configurable coverage threshold (for example 75%).  
+  - The script fails the job if average coverage is below the threshold, turning low coverage into a hard gate for pull requests.
+- `static_analysis.sh`  
+  - Installs **Salesforce Code Analyzer** (`sfdx-scanner`) and scans the `force-app` directory.  
+  - Outputs a SARIF report file and uses severity thresholds so that critical violations can break the build if required.
+These scripts can also be run locally by developers, giving the same checks as the CI pipeline.
+
+### Salesforce CI workflow (`.github/workflows/salesforce-ci.yml`)
+The `salesforce-ci.yml` workflow wires the scripts into a multi-job pipeline that runs only when Salesforce metadata is changed.
+**Trigger**
+```yaml
+on:
+  pull_request:
+    paths:
+      - "salesforce/**"
+```
+Only pull requests that touch files under salesforce/ will run this workflow, keeping the CI fast and focused.
+Implementations
+1. salesforce-validate – metadata validation
+o	Checks out the repository.
+o	Verifies that the SFDX_AUTH_URL secret exists.
+o	Installs Node.js and Salesforce CLI (sfdx).
+o	Runs auth.sh to authenticate to the Sandbox org.
+o	Executes validate_deploy.sh to perform a check-only deploy with RunLocalTests.
+o	Fails the job if the deployment validation fails.
+2. salesforce-tests – Apex tests with coverage gate
+o	Depends on salesforce-validate (runs only if validation succeeds).
+o	Re-uses the same auth pattern.
+o	Runs run_apex_tests.sh with a configurable COVERAGE_THRESHOLD (for example 75%).
+o	Fails the job if aggregated coverage is below the threshold, preventing merges that reduce test quality.
+3.	salesforce-static-analysis – static code analysis
+o	Also depends on salesforce-validate.
+o	Installs Salesforce CLI and Code Analyzer.
+o	Runs static_analysis.sh to scan the Apex and metadata in force-app.
+o	Uploads the generated SARIF report as a build artifact so issues can be reviewed in detail.
+By using separate jobs with clear responsibilities, the workflow makes it obvious which stage failed (validation, tests or static analysis).
+
+### Stage 6 Summary:
+Completes the DevOps story by adding a Salesforce-aware CI layer:
+- Metadata changes under salesforce/ automatically trigger validation, tests and static analysis.
+- Apex coverage is enforced via a configurable threshold, improving long-term code health.
+- Static analysis and Code Analyzer reports surface potential issues early in the development lifecycle.
+All Salesforce tooling is integrated into the same GitHub repository as the FastAPI service, Docker images and Kubernetes manifests, making this project a cohesive, portfolio-ready example of end-to-end DevOps for both application code and Salesforce metadata.
