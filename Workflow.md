@@ -207,8 +207,10 @@ This sets the stage for the following stages:
 - monitoring the status of Salesforce integrations through Prometheus and Grafana.
 
 ## Stage 3 - Continuous Integration (FastAPI CI Workflow)
+
 In the third stage, it is configured **CI-process for FastAPI-service** by means of **GitHub Actions**.  
 Pipeline automatically runs linters, static analysis, tests, and security scans when working with `feature/*`, `dev`, and `main` branches, as well as when creating a Pull Request.
+
 ---
 
 ### FastAPI CI Workflow (`.github/workflows/fastapi-ci.yml`)
@@ -682,3 +684,50 @@ Completes the DevOps story by adding a Salesforce-aware CI layer:
 - Apex coverage is enforced via a configurable threshold, improving long-term code health.
 - Static analysis and Code Analyzer reports surface potential issues early in the development lifecycle.
 All Salesforce tooling is integrated into the same GitHub repository as the FastAPI service, Docker images and Kubernetes manifests, making this project a cohesive, portfolio-ready example of end-to-end DevOps for both application code and Salesforce metadata.
+
+## Stage 7 – Monitoring & Logging
+
+Project adds a complete **observability layer** on top of the FastAPI service and the Kubernetes deployment.  
+The goal is to collect metrics, monitor the health of the Salesforce integration, and make application logs easily accessible during development and operations.
+
+---
+
+### Monitoring stack: Prometheus & Grafana
+Standard Kubernetes monitoring stack is installed using the **kube-prometheus-stack** Helm chart:
+- **Prometheus** – collects metrics from the Kubernetes cluster and from the FastAPI application.
+- **Alertmanager** – can be extended later for alerting rules.
+- **Grafana** – provides dashboards for visualising HTTP traffic, performance and integration health.
+
+The stack is deployed into a dedicated `monitoring` namespace, which keeps monitoring components separate from the application workloads and exposes CRDs such as `ServiceMonitor` and `PodMonitor` for custom metric scraping.
+
+### FastAPI metrics and Salesforce integration errors
+The FastAPI application is instrumented with Prometheus-compatible metrics:
+- `prometheus_fastapi_instrumentator` is used to expose standard HTTP metrics at the `/metrics` endpoint (request count, latency histograms, status codes, etc.).
+- A custom Prometheus **counter** is added:
+  - `sf_status_errors_total` – counts the number of failed calls to the `/sf-status` endpoint.
+  - The counter is incremented whenever the Salesforce client returns a non-`ok` status or raises an exception.
+This makes it possible to track not only generic API performance, but also the **health of the Salesforce integration** over time, for example by plotting `rate(sf_status_errors_total[5m])` in Grafana.
+
+### Grafana dashboards and logs
+Using Grafana, a dedicated dashboard is created to visualise:
+- **HTTP request rate and error rate (5xx)** for the FastAPI service.
+- **Response time (e.g. p95 latency)** derived from Prometheus histograms.
+- **Salesforce integration errors**, based on the `sf_status_errors_total` metric.
+The dashboard is exported as JSON and stored in `monitoring/grafana-dashboard.json`, so it can be versioned in git and re-imported into other environments.
+For logging, the application continues to log to **stdout** via Uvicorn/FastAPI. In Kubernetes this allows logs to be accessed with standard tooling such as:
+- `kubectl logs` (by pod or by label),
+- or GUI tools like Lens.
+<details> <summary>Uvicorn reload</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2018.jpg?raw=true" width="900"> </details>
+
+### ServiceMonitor integration with Kubernetes
+To allow Prometheus to scrape the FastAPI metrics automatically, a `ServiceMonitor` resource is defined under `fastapi-app/k8s/`:
+- It targets the `devops-app` Service in the `devops-app` namespace (matched by label `app: devops-app`).
+- It configures an endpoint on the Service with:
+  - `port: http`
+  - `path: /metrics`
+  - `interval: 15s`
+When the `ServiceMonitor` is applied, the `kube-prometheus-stack` discovers the FastAPI service and starts scraping its `/metrics` endpoint. This approach follows Kubernetes-native patterns and keeps monitoring configuration declarative and version-controlled.
+
+<details> <summary>Uvicorn reload</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2019.jpg?raw=true" width="900"> </details>
+
+Changes turn the project into a fully observable service, where performance, reliability and Salesforce integration health can all be monitored in real time.
