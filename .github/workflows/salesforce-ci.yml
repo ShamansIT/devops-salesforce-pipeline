@@ -1,0 +1,124 @@
+name: Salesforce CI
+
+on:
+  pull_request:
+    paths:
+      - "salesforce/**"
+
+jobs:
+  salesforce-validate:
+    name: Validate Salesforce metadata (check-only)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if SFDX_AUTH_URL is provided
+        id: sfdxcheck
+        run: |
+          if [ -z "${{ secrets.SFDX_AUTH_URL }}" ]; then
+            echo "has_auth=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_auth=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Node.js
+        if: steps.sfdxcheck.outputs.has_auth == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Salesforce CLI (sfdx)
+        if: steps.sfdxcheck.outputs.has_auth == 'true'
+        run: npm install sfdx-cli@7 --global
+
+      - name: Authorize Salesforce org
+        if: steps.sfdxcheck.outputs.has_auth == 'true'
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+          SFDX_ORG_ALIAS: Sandbox
+        run: |
+          bash salesforce/scripts/auth.sh
+
+      - name: Validate source deploy (check-only)
+        if: steps.sfdxcheck.outputs.has_auth == 'true'
+        env:
+          SFDX_ORG_ALIAS: Sandbox
+        run: |
+          cd salesforce
+          bash scripts/validate_deploy.sh
+
+  salesforce-tests:
+    name: Run Apex tests with coverage gate
+    runs-on: ubuntu-latest
+    needs: salesforce-validate
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if SFDX_AUTH_URL is provided
+        id: sfdxcheck
+        run: |
+          if [ -z "${{ secrets.SFDX_AUTH_URL }}" ]; then
+            echo "has_auth=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_auth=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Node.js
+        if: steps.sfdxcheck.outputs.has_auth == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Salesforce CLI (sfdx)
+        if: steps.sfdxcheck.outputs.has_auth == 'true'
+        run: npm install sfdx-cli@7 --global
+
+      - name: Authorize Salesforce org
+        if: steps.sfdxcheck.outputs.has_auth == 'true'
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+          SFDX_ORG_ALIAS: Sandbox
+        run: |
+          bash salesforce/scripts/auth.sh
+
+      - name: Run Apex tests with coverage threshold
+        if: steps.sfdxcheck.outputs.has_auth == 'true'
+        env:
+          SFDX_ORG_ALIAS: Sandbox
+          COVERAGE_THRESHOLD: 75
+        run: |
+          cd salesforce
+          bash scripts/run_apex_tests.sh
+
+  salesforce-static-analysis:
+    name: Salesforce static analysis (Code Analyzer)
+    runs-on: ubuntu-latest
+    needs: salesforce-validate
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Salesforce CLI (sfdx)
+        run: npm install sfdx-cli@7 --global
+
+      - name: Run static analysis with Code Analyzer
+        run: |
+          cd salesforce
+          bash scripts/static_analysis.sh
+
+      - name: Upload static analysis report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sf-code-scanner-results
+          path: salesforce/sf-code-scanner-results.sarif
+          if-no-files-found: ignore
