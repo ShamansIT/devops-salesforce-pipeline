@@ -223,3 +223,114 @@ This ensures that:
 
 The fix was implemented in a separate branch (fix/docker-image-name-lowercase) and merged into main via Pull Request to demonstrate a proper DevOps hotfix flow.
 
+## Stage 5 
+
+### Kubernetes / Helm: `kubernetes cluster unreachable: connect: connection refused`
+
+**Symptom in CI (FastAPI Deploy workflow):**
+```text
+Error: kubernetes cluster unreachable: Get "http://localhost:8080/version": dial tcp [::1]:8080: connect: connection refused
+Error: Process completed with exit code 1.
+```
+This error occurred in the FastAPI Deploy / Deploy to Kubernetes with Helm workflow when running:
+```yaml
+helm upgrade --install devops-app ./fastapi-app/helm-chart \
+  --namespace devops-app \
+  --create-namespace \
+  -f fastapi-app/helm-chart/values.yaml
+```
+**Reason:**
+- GitHub Actions runner tried to connect to a Kubernetes API on localhost:8080, but:
+- the actual cluster used for testing is local (minikube on a developer machine);
+- the kubeconfig pointed to a local address (e.g. https://127.0.0.1:XXXXX), which is not reachable from the GitHub-hosted runner;
+- for the runner, this is “its own” localhost, not the developer’s minikube instance.
+
+As a result, the deploy job always failed when trying to access the cluster.
+**How fixed:**
+- Instead of trying to always deploy, the workflow was updated so that:
+- the deploy runs only if a valid kubeconfig is provided via the KUBE_CONFIG_DATA secret;
+- if the secret is missing, the deploy job exits successfully and is effectively skipped.
+A dedicated step was introduced to check the presence of the secret:
+```yaml
+
+- name: Check if KUBE_CONFIG_DATA exists
+  id: kubecheck
+  run: |
+    if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
+      echo "has_kube=false" >> $GITHUB_OUTPUT
+    else
+      echo "has_kube=true" >> $GITHUB_OUTPUT
+    fi
+```
+All subsequent steps in the job use this condition:
+```yaml
+if: steps.kubecheck.outputs.has_kube == 'true'
+```
+This approach provides:
+- a working local deployment to minikube via Helm;
+- a non-failing CI workflow in GitHub Actions when no reachable cluster is configured;
+- a ready-to-use path for future real Kubernetes clusters (by simply adding a valid KUBE_CONFIG_DATA secret).
+
+### GitHub Actions YAML: Unrecognized named-value: 'env' / Unrecognized named-value: 'secrets' in VS Code
+**Symptom in VS Code (YAML validator):**
+```text
+Unrecognized named-value: 'env'
+Unrecognized named-value: 'secrets'
+```
+This appeared on lines where the workflow used expressions like:
+```yaml
+if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
+```
+or
+```yaml
+if: ${{ env.HAS_KUBE_CONFIG != '' }}
+```
+**Reason:**
+The VS Code YAML extension does not fully understand GitHub Actions expression contexts (env, secrets, github, etc.) when they are used directly in job.if expressions.
+**Important:**
+- This is not a GitHub Actions error;
+- It is only a local validation warning from the editor;
+- GitHub’s own workflow engine correctly supports secrets.* and env.* in expressions.
+However, these warnings made the workflow look invalid inside the IDE.
+**How fixed:**
+To eliminate false-positive errors and keep the workflow valid and readable, the logic was refactored:
+- Instead of using secrets or env directly in job.if, a dedicated “check” step is used:
+```yaml
+- name: Check if KUBE_CONFIG_DATA exists
+  id: kubecheck
+  run: |
+    if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
+      echo "has_kube=false" >> $GITHUB_OUTPUT
+    else
+      echo "has_kube=true" >> $GITHUB_OUTPUT
+    fi
+```
+Subsequent steps use the output of this step:
+```yaml
+- name: Set up kubectl config
+  if: steps.kubecheck.outputs.has_kube == 'true'
+  env:
+    KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+  run: |
+    mkdir -p $HOME/.kube
+    echo "$KUBE_CONFIG_DATA" | base64 -d > $HOME/.kube/config
+    kubectl config get-contexts
+
+- name: Set up Helm
+  if: steps.kubecheck.outputs.has_kube == 'true'
+  uses: azure/setup-helm@v4
+
+- name: Helm upgrade/install devops-app
+  if: steps.kubecheck.outputs.has_kube == 'true'
+  run: |
+    helm upgrade --install devops-app ./fastapi-app/helm-chart \
+      --namespace devops-app \
+      --create-namespace \
+      -f fastapi-app/helm-chart/values.yaml
+```
+**Pattern:**
+- is fully supported by GitHub Actions;
+- removes “Unrecognized named-value” errors from VS Code;
+- keeps the deploy logic explicit and easy to maintain.
+
+Scoped with the fixes from Stage 3 (CI linting & security) and Stage 4 (Docker/GHCR image naming), these changes make the deployment pipeline more robust and developer-friendly in both local and CI environments.
