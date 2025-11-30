@@ -11,13 +11,30 @@ jobs:
   deploy:
     name: Deploy to Kubernetes with Helm
     runs-on: ubuntu-latest
-    if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check if KUBE_CONFIG_DATA exists
+        id: kubecheck
+        run: |
+          if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
+            echo "kubeconfig missing"
+            echo "has_kube=false" >> $GITHUB_OUTPUT
+          else
+            echo "kubeconfig exists"
+            echo "has_kube=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Stop workflow if no kubeconfig
+        if: steps.kubecheck.outputs.has_kube == 'false'
+        run: |
+          echo "Skipping deploy: no KUBE_CONFIG_DATA provided."
+          exit 0
+
       - name: Set up kubectl config
+        if: steps.kubecheck.outputs.has_kube == 'true'
         env:
           KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
         run: |
@@ -26,9 +43,11 @@ jobs:
           kubectl config get-contexts
 
       - name: Set up Helm
+        if: steps.kubecheck.outputs.has_kube == 'true'
         uses: azure/setup-helm@v4
 
       - name: Helm upgrade/install devops-app
+        if: steps.kubecheck.outputs.has_kube == 'true'
         run: |
           helm upgrade --install devops-app ./fastapi-app/helm-chart \
             --namespace devops-app \
