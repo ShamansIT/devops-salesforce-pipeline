@@ -11,6 +11,7 @@ jobs:
   deploy:
     name: Deploy to Kubernetes with Helm
     runs-on: ubuntu-latest
+    if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
 
     steps:
       - name: Checkout repository
