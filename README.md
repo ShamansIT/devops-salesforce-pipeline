@@ -457,4 +457,157 @@ As a result, when pushing into the main in GHCR, the following are published:
 - scanning the image with the Trivy tool at the CI level;
 - automatic publication of Docker images to GitHub Container Registry from the main branch.
 
+## Stage 5 - Kubernetes & Helm Deployment
+In Stage 5, the FastAPI service was deployed to **Kubernetes** and integrated with **Helm** and **GitHub Actions** for automated deployment.  
+**Goals of stage were to:**
+- run the application inside a local Kubernetes cluster (minikube);
+- provide clean, reusable Kubernetes manifests;
+- create a configurable **Helm chart** (image, replicaCount, resources, ingress);
+- configure a **fastapi-deploy.yml** workflow that runs `helm upgrade --install` from CI.
+---
+
+### Local Kubernetes cluster (minikube)
+For local testing, a single-node Kubernetes cluster was started via **minikube**:
+```cmd
+minikube start --driver=docker
+
+minikube status
+kubectl get nodes
+```
+<details> <summary>Minikube start and node status</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2015.jpg?raw=true" width="900"> </details>
+
+This creates a control-plane node named minikube, which is used as the target for Helm-based deployments.
+All Kubernetes resources for the service are deployed into a dedicated namespace: devops-app.
+
+### Raw Kubernetes manifests (fastapi-app/k8s/)
+To keep a low-level deployment option alongside Helm, basic Kubernetes manifests were created in:
+```text
+fastapi-app/k8s/
+  deployment.yaml
+  service.yaml
+  ingress.yaml   # optional
+```
+**Deployment (deployment.yaml)**
+
+Defines a Deployment with 2 replicas of the FastAPI container.
+Uses the Docker image published to GitHub Container Registry (GHCR), e.g.:
+```yaml
+image: ghcr.io/shamansit/devops-salesforce-pipeline/fastapi-app:latest
+```
+**Exposes container port 8000.**
+Adds readinessProbe and livenessProbe hitting /health on port 8000.
+**Specifies resources:**
+```yaml
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+```
+
+**Service (service.yaml)**
+Creates a Service with:
+```yaml
+type: ClusterIP
+port: 80
+targetPort: 8000
+Routes internal traffic on port 80 to the FastAPI containers on port 8000.
+```
+**Ingress (ingress.yaml, optional)**
+Defines an HTTP ingress rule for a host such as devops-app.local.
+Can be used together with the minikube ingress addon for friendly URLs.
+For local access in minikube, the service can be exposed via:
+```cmd
+minikube service devops-app -n devops-app --url
+```
+This command prints a URL that can be used to reach:
+```text
+/health
+/api/tasks
+/sf-status
+/docs
+```
+### Helm chart (fastapi-app/helm-chart/)
+To make the deployment more configurable and production-friendly, a Helm chart was created:
+```text
+fastapi-app/
+  helm-chart/
+    Chart.yaml
+    values.yaml
+    templates/
+      _helpers.tpl
+      deployment.yaml
+      service.yaml
+      ingress.yaml
+Chart.yaml
+```
+**Describes the chart metadata:**
+```yaml
+apiVersion: v2
+name: devops-app
+description: A FastAPI service with Salesforce integration and CI/CD pipeline
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+values.yaml
+```
+**Centralizes configuration parameters:**
+- replicaCount
+- image.repository, image.tag, image.pullPolicy
+- service.type, service.port
+- resources (CPU/memory)
+- optional ingress configuration
+
+### GitHub Actions deploy workflow (fastapi-deploy.yml)
+Dedicated step checks whether a kubeconfig has been provided via the KUBE_CONFIG_DATA secret:
+```yaml
+- name: Check if KUBE_CONFIG_DATA exists
+  id: kubecheck
+  run: |
+    if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
+      echo "has_kube=false" >> $GITHUB_OUTPUT
+    else
+      echo "has_kube=true" >> $GITHUB_OUTPUT
+    fi
+```
+**Set up kubectl config (conditional)**
+```yaml
+- name: Set up kubectl config
+  if: steps.kubecheck.outputs.has_kube == 'true'
+  env:
+    KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+  run: |
+    mkdir -p $HOME/.kube
+    echo "$KUBE_CONFIG_DATA" | base64 -d > $HOME/.kube/config
+    kubectl config get-contexts
+```
+**Set up Helm (conditional)**
+```yaml
+- name: Set up Helm
+  if: steps.kubecheck.outputs.has_kube == 'true'
+  uses: azure/setup-helm@v4
+```
+**Helm upgrade/install (conditional)**
+```yaml
+- name: Helm upgrade/install devops-app
+  if: steps.kubecheck.outputs.has_kube == 'true'
+  run: |
+    helm upgrade --install devops-app ./fastapi-app/helm-chart \
+      --namespace devops-app \
+      --create-namespace \
+      -f fastapi-app/helm-chart/values.yaml
+```
+<details> <summary>Helm deploy, pods, service and minikube URL</summary> <img src="https://github.com/ShamansIT/devops-salesforce-pipeline/raw/main/images/Screen%2015.jpg?raw=true" width="900"> </details>
+
+If **KUBE_CONFIG_DATA** is not configured, the workflow logs a message and effectively skips the deploy, keeping the pipeline green for local-only setups.
+When a real, reachable Kubernetes cluster is available, adding a valid kubeconfig to **KUBE_CONFIG_DATA** is enough to turn on automatic deployment from GitHub Actions.
+
+### Stage 5 Summary:
+Completes the DevOps pipeline from code to a running service in Kubernetes:
+- FastAPI + Salesforce integration is now containerised, scanned, and deployed.
+- The service can run locally in minikube using either plain manifests or a Helm chart.
+Dedicated deploy workflow (fastapi-deploy.yml) is prepared to deploy into any Kubernetes cluster configured via kubeconfig.
+The configuration is environment-aware and ready to be extended for staging/production clusters in the future.
 
